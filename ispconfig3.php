@@ -167,7 +167,7 @@ function ispconfig3_CreateAccount($params) {
 	
 	$active = $params['configoption20'];
 	
-	logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
+	if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
 	
 	if($usessl == 'on') {
 		
@@ -199,9 +199,11 @@ function ispconfig3_CreateAccount($params) {
 					'trace' => false
 				)
 			);
+			if ($debug) error_log(basename(__FILE__).':'.__LINE__.'soap_client:'.print_r($soap_client,true));
 			
 			$soap_session_id = $soap_client->login($soapuser,$soappass);
-			
+			if ($debug) error_log(basename(__FILE__).':'.__LINE__.":\$soap_session_id: $soap_session_id");
+				
 			if(isset($params['serverip'])) {
 				$nameserver = 0;
 				$nameserverslave = 0;
@@ -215,17 +217,23 @@ function ispconfig3_CreateAccount($params) {
 				$server = array();
 				$servermaster = array();
 				
-				$soap_result = $soap_client->server_get_serverid_by_ip($soap_session_id,$params['serverip']);
-				$serverservices = $soap_client->server_get_functions($soap_session_id,$soap_result[0]['server_id']);
+				# get server_id by IP address and prepare $defaultwebserver
+				$soap_get_serverid_by_ip = $soap_client->server_get_serverid_by_ip($soap_session_id,$params['serverip']);
+				$soap_get_serverid_by_ip = correct_array_dimension($soap_get_serverid_by_ip);
+				if ($debug) error_log(basename(__FILE__).':'.__LINE__.'$soap_result: '. print_r($soap_get_serverid_by_ip,true));
+				
+				$server_get_functions = $soap_client->server_get_functions($soap_session_id,$soap_get_serverid_by_ip[0]['server_id']);
+				$serverservices = correct_array_dimension($server_get_functions);
+				if ($debug) error_log(basename(__FILE__).':'.__LINE__.'$serverservices: '. print_r($serverservices,true));
 				
 				//By default: try to associate HTTP, FTP and Database services to same (web)server
-				if($serverservices[0]['web_server'] == 1) {
-					$defaultwebserver = $soap_result[0]['server_id'];
-					if($serverservices[0]['file_server'] == 1) {
-						$defaultfileserver = $soap_result[0]['server_id'];
+				if($serverservices['web_server'] == 1) {
+					$defaultwebserver = $soap_get_serverid_by_ip[0]['server_id'];
+					if($serverservices['file_server'] == 1) {
+						$defaultfileserver = $soap_get_serverid_by_ip[0]['server_id'];
 					}
-					if($serverservices[0]['db_server'] == 1) {
-						$defaultdbserver = $soap_result[0]['server_id'];
+					if($serverservices['db_server'] == 1) {
+						$defaultdbserver = $soap_get_serverid_by_ip[0]['server_id'];
 					}
 				}
 				
@@ -242,8 +250,8 @@ function ispconfig3_CreateAccount($params) {
 				$masterdb = 0;
 				
 				while($index <= count($soap_result)) {
-					$serverservices = $soap_client->server_get_functions($soap_session_id,$soap_result[$index]['server_id']);
-					
+					if ($debug) error_log(basename(__FILE__).':'.__LINE__."\$soap_session_id:$soap_session_id".':$soap_result:'.print_r($soap_result,true));
+					$serverservices = correct_array_dimension( $soap_client->server_get_functions($soap_session_id,$soap_result[$index]['server_id']) );
 					if($serverservices[0]['mail_server'] == 1) {
 						$server['mail_server'][$mail]['server_id'] = $soap_result[$index]['server_id'];
 						$server['mail_server'][$mail]['server_name'] = $soap_result[$index]['server_name'];
@@ -358,8 +366,8 @@ function ispconfig3_CreateAccount($params) {
 					++$index;
 				}
 				
-				logModuleCall('ispconfig3','DNS Mirror ID',$nameserverslave,$defaultdnsserver.' - '.$nameserver.' - '.$mirror_id[0]['mirror_server_id'],'','');
-				logModuleCall('ispconfig3','ServerList',$servermaster,$server,'','');
+				if (function_exists('logModuleCall')) logModuleCall('ispconfig3','DNS Mirror ID',$nameserverslave,$defaultdnsserver.' - '.$nameserver.' - '.$mirror_id[0]['mirror_server_id'],'','');
+				if (function_exists('logModuleCall')) logModuleCall('ispconfig3','ServerList',$servermaster,$server,'','');
 				
 				if(count($params['configoptions']) >= 1) {
 		
@@ -429,7 +437,7 @@ function ispconfig3_CreateAccount($params) {
 					}
 				}
 				
-				logModuleCall('ispconfig3','ConfigOptions',$params['configoptions'],'Option Value: '.$config_option_value.' Retrieved string: '.$php_name_string,'','');
+				if (function_exists('logModuleCall')) logModuleCall('ispconfig3','ConfigOptions',$params['configoptions'],'Option Value: '.$config_option_value.' Retrieved string: '.$php_name_string,'','');
 				
 				$ispconfigparams = array(
 					'company_name' => $companyname,
@@ -461,7 +469,7 @@ function ispconfig3_CreateAccount($params) {
 				
 				$reseller_id = 0;
 				$client_id = $soap_client->client_add($soap_session_id,$reseller_id,$ispconfigparams);
-				logModuleCall('ispconfig3','CreateClient',$client_id,$ispconfigparams,'','');
+				if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateClient',$client_id,$ispconfigparams,'','');
 				
 				if($createdns == 'on') { //figure out how the ispconfig serial is generated (hint date) + stamp records w/ serial
 					$ispconfigparams = array(
@@ -476,6 +484,7 @@ function ispconfig3_CreateAccount($params) {
 						'ttl' => '3600',
 						'active' => 'y'
 					);
+					if ($debug) error_log(basename(__FILE__).":".__LINE__.":client_id=$client_id, ispconfigparams:".print_r($ispconfigparams,true));
 					$dns_id = $soap_client->dns_zone_add($soap_session_id,$client_id,$ispconfigparams);
 					
 					$ispconfigparams = array(
@@ -557,8 +566,8 @@ function ispconfig3_CreateAccount($params) {
 					$zone_id = $soap_client->dns_txt_add($soap_session_id,$client_id,$ispconfigparams);
 						
 					//$dns_id = $soap_client->dns_templatezone_add($soap_session_id,$client_id,$dnstemplateid,$domain,$params['serverip'],$nameserver,$nameserverslave,'webmaster@' . $domain);
-					logModuleCall('ispconfig3','CreateDNSZone',$domain,'DNS Template: '.$dnstemplateid,'','');
-					logModuleCall('ispconfig3','CreateDNSZone',$domain,'IP: '.$params['serverip'].' NS1: '.$nameserver.' NS2: '.$nameserverslave.' Email: '.'webmaster@'.$domain,'','');
+					if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateDNSZone',$domain,'DNS Template: '.$dnstemplateid,'','');
+					if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateDNSZone',$domain,'IP: '.$params['serverip'].' NS1: '.$nameserver.' NS2: '.$nameserverslave.' Email: '.'webmaster@'.$domain,'','');
 				}
 				
 				if($createmail == 'on') {
@@ -569,7 +578,7 @@ function ispconfig3_CreateAccount($params) {
 						);
 						
 					$mail_id = $soap_client->mail_domain_add($soap_session_id,$client_id,$ispconfigparams);
-					logModuleCall('ispconfig3','CreateMailDomain',$mail_id.' - Mail Server IP:'.$defaultmailserverip['ip_address'],$ispconfigparams,'','');
+					if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateMailDomain',$mail_id.' - Mail Server IP:'.$defaultmailserverip['ip_address'],$ispconfigparams,'','');
 				}
 				
 				if($createweb == 'on') {
@@ -632,7 +641,7 @@ function ispconfig3_CreateAccount($params) {
 					);
 					
 					$website_id = $soap_client->sites_web_domain_add($soap_session_id,$client_id,$ispconfigparams,false);
-					logModuleCall('ispconfig3','CreateWebDomain',$website_id,$ispconfigparams,'','');
+					if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateWebDomain',$website_id,$ispconfigparams,'','');
 					
 					if($webcreateftp == 'on') {
 						$domain_info = $soap_client->sites_web_domain_get($soap_session_id,$website_id);
@@ -654,7 +663,7 @@ function ispconfig3_CreateAccount($params) {
 						);
 						
 						$ftp_id = $soap_client->sites_ftp_user_add($soap_session_id,$client_id,$ispconfigparams);
-						logModuleCall('ispconfig3','CreateFtpUser',$ftp_id,$ispconfigparams,'','');
+						if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateFtpUser',$ftp_id,$ispconfigparams,'','');
 					}
 				}
 			}
@@ -662,9 +671,9 @@ function ispconfig3_CreateAccount($params) {
 			$successful = 1;
 		}
 		catch(SoapFault $e) {
-			$error = 'SOAP Error: ' . $e->getMessage();
+			$error = 'Line:'.$e->getLine().': SOAP Error: ' . $e->getMessage();
 			$successful = 0;
-			logModuleCall('ispconfig3','Create Failed',$e->getMessage(),$params,'','');
+			if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Create Failed',$e->getMessage(),$params,'','');
 		}
 		
 		if($successful == 1) {
@@ -725,7 +734,7 @@ function ispconfig3_TerminateAccount($params) {
 	
 	$active = $params['configoption20'];
 	
-	logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
+	if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
 	
 	if ($usessl == 'on') {
 		
@@ -761,7 +770,7 @@ function ispconfig3_TerminateAccount($params) {
 			
 			$client_id = $soap_client->client_get_by_username($soap_session_id,$username);
 			$result = $soap_client->client_delete_everything($soap_session_id,$client_id['client_id']);
-			logModuleCall('ispconfig3','Terminate Account',$client_id['client_id'],$ispconfigparams,'','');
+			if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Terminate Account',$client_id['client_id'],$ispconfigparams,'','');
 			$soap_client->logout($soap_session_id);
 			
 			if($result == 1) {
@@ -835,7 +844,7 @@ function ispconfig3_ChangePackage($params) {
 	
 	$active = $params['configoption20'];
 	
-	logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
+	if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
 	
 	if ($usessl == 'on') {
 		
@@ -874,7 +883,7 @@ function ispconfig3_ChangePackage($params) {
 			$reseller_id = 0;
 			$client_id = $soap_client->client_get_by_username($soap_session_id,$username);
 			$result = $soap_client->client_update($soap_session_id,$client_id['client_id'],$reseller_id,$ispconfigparams);
-			logModuleCall('ispconfig3','Change Package',$client_id['client_id'],$ispconfigparams,'','');
+			if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Change Package',$client_id['client_id'],$ispconfigparams,'','');
 			$soap_client->logout($soap_session_id);
 			
 			if($result == 1) {
@@ -948,7 +957,7 @@ function ispconfig3_SuspendAccount($params) {
 	
 	$active = $params['configoption20'];
 	
-	logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
+	if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
 	
 	if($usessl == 'on') {
 		
@@ -988,8 +997,8 @@ function ispconfig3_SuspendAccount($params) {
 			$client_id = $soap_client->client_get_by_username($soap_session_id,$username);
 			$client_id_info = $soap_client->client_get($soap_session_id,$client_id['client_id']);
 			$result = $soap_client->client_update($soap_session_id,$client_id['client_id'],$reseller_id,$ispconfigparams);
-			logModuleCall('ispconfig3','Suspend Account',$client_id['client_id'],$ispconfigparams,'','');
-			logModuleCall('ispconfig3','Suspend Account Info',$client_id['client_id'],$client_id_info,'','');
+			if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Suspend Account',$client_id['client_id'],$ispconfigparams,'','');
+			if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Suspend Account Info',$client_id['client_id'],$client_id_info,'','');
 			
 			if($createdns == 'on') {
 				$dns_id = $soap_client->dns_zone_get_by_user($soap_session_id,$client_id['client_id'],$client_id_info['default_dnsserver']);
@@ -998,7 +1007,7 @@ function ispconfig3_SuspendAccount($params) {
 				while($index <= (count($dns_id) - 1)) {
 					$zone_id = $soap_client->dns_zone_set_status($soap_session_id,$dns_id[$index]['id'],'inactive');
 					++$index;
-					logModuleCall('ispconfig3','Suspend DNS',$dns_id,$zone_id,'','');
+					if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Suspend DNS',$dns_id,$zone_id,'','');
 				}
 			}
 			
@@ -1010,7 +1019,7 @@ function ispconfig3_SuspendAccount($params) {
 					$mail_domain = $soap_client->mail_domain_get_by_domain($soap_session_id,$dns_domain);
 					$mail_id = $soap_client->mail_domain_set_status($soap_session_id,$mail_domain[0]['domain_id'],'inactive');
 					++$index;
-					logModuleCall('ispconfig3','Suspend Mail',$mail_domain,$mail_id,'','');
+					if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Suspend Mail',$mail_domain,$mail_id,'','');
 				}
 			}
 			
@@ -1029,12 +1038,12 @@ function ispconfig3_SuspendAccount($params) {
 							$ftp_name[$index_ftp]['active'] = 'n';
 							$ftp_id = $soap_client->sites_ftp_user_update($soap_session_id,$client_id['client_id'],$ftp_name[$index_ftp]['ftp_user_id'],ftp_name[$index_ftp]);
 							++$index_ftp;
-							logModuleCall('ispconfig3','Suspend FTP User',$ftp_username,$ftp_id,'','');
+							if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Suspend FTP User',$ftp_username,$ftp_id,'','');
 						}
 					}
 					
 					++$index;
-					logModuleCall('ispconfig3','Suspend Web Site',$web_domain,$web_id,'','');
+					if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Suspend Web Site',$web_domain,$web_id,'','');
 				}
 			}
 			
@@ -1111,7 +1120,7 @@ function ispconfig3_UnsuspendAccount($params) {
 	
 	$active = $params['configoption20'];
 	
-	logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
+	if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
 	
 	if($usessl == 'on') {
 		
@@ -1151,8 +1160,8 @@ function ispconfig3_UnsuspendAccount($params) {
 			$client_id = $soap_client->client_get_by_username($soap_session_id,$username);
 			$client_id_info = $soap_client->client_get($soap_session_id,$client_id['client_id']);
 			$result = $soap_client->client_update($soap_session_id,$client_id['client_id'],$reseller_id,$ispconfigparams);
-			logModuleCall('ispconfig3','Unsuspend Account',$client_id['client_id'],$ispconfigparams,'','');
-			logModuleCall('ispconfig3','Unsuspend Account Info',$client_id['client_id'],$client_id_info,'','');
+			if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Unsuspend Account',$client_id['client_id'],$ispconfigparams,'','');
+			if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Unsuspend Account Info',$client_id['client_id'],$client_id_info,'','');
 			
 			if($createdns == 'on') {
 				$dns_id = $soap_client->dns_zone_get_by_user($soap_session_id,$client_id['client_id'],$client_id_info['default_dnsserver']);
@@ -1161,7 +1170,7 @@ function ispconfig3_UnsuspendAccount($params) {
 				while($index <= (count($dns_id) - 1)) {
 					$zone_id = $soap_client->dns_zone_set_status($soap_session_id,$dns_id[$index]['id'],'active');
 					++$index;
-					logModuleCall('ispconfig3','Unsuspend DNS',$dns_id,$zone_id,'','');
+					if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Unsuspend DNS',$dns_id,$zone_id,'','');
 				}
 			}
 			
@@ -1173,7 +1182,7 @@ function ispconfig3_UnsuspendAccount($params) {
 					$mail_domain = $soap_client->mail_domain_get_by_domain($soap_session_id,$dns_domain);
 					$mail_id = $soap_client->mail_domain_set_status($soap_session_id,$mail_domain[0]['domain_id'],'active');
 					++$index;
-					logModuleCall('ispconfig3','Unsuspend Mail',$mail_domain,$mail_id,'','');
+					if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Unsuspend Mail',$mail_domain,$mail_id,'','');
 				}
 			}
 			
@@ -1192,12 +1201,12 @@ function ispconfig3_UnsuspendAccount($params) {
 							$ftp_name[$index_ftp]['active'] = 'y';
 							$ftp_id = $soap_client->sites_ftp_user_update($soap_session_id,$client_id['client_id'],$ftp_name[$index_ftp]['ftp_user_id'],ftp_name[$index_ftp]);
 							++$index_ftp;
-							logModuleCall('ispconfig3','Unsuspend FTP User',$ftp_username,$ftp_id,'','');
+							if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Unsuspend FTP User',$ftp_username,$ftp_id,'','');
 						}
 					}
 					
 					++$index;
-					logModuleCall('ispconfig3','Unsuspend Web Site',$web_domain,$web_id,'','');
+					if (function_exists('logModuleCall')) logModuleCall('ispconfig3','Unsuspend Web Site',$web_domain,$web_id,'','');
 				}
 			}
 			
@@ -1274,7 +1283,7 @@ function ispconfig3_ChangePassword($params) { //todo: have stats and ftp passwor
 	
 	$active = $params['configoption20'];
 	
-	logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
+	if (function_exists('logModuleCall')) logModuleCall('ispconfig3','CreateClient',$params['clientdetails'],$params,'','');
 	
 	if ($usessl == 'on') {
 		
@@ -1309,7 +1318,7 @@ function ispconfig3_ChangePassword($params) { //todo: have stats and ftp passwor
 			$soap_session_id = $soap_client->login($soapuser,$soappass);
 			$client_id = $soap_client->client_get_by_username($soap_session_id,$username);
 			$result = $soap_client->client_change_password($soap_session_id,$client_id['client_id'],$password);
-			logModuleCall('ispconfig3','ChangePassword',$clientdetails,$result.'Password: '.$password);
+			if (function_exists('logModuleCall')) logModuleCall('ispconfig3','ChangePassword',$clientdetails,$result.'Password: '.$password);
 			
 			$soap_client->logout($soap_session_id);
 			
@@ -1402,4 +1411,19 @@ function ispconfig3_ClientArea($params) {
     </script>';
 }
 
-?>
+/**
+ * Array Dimension Correction: 
+ * ISPconfig does not have consistent result in case of single row or multiple row.
+ * We have to change array index into two dimension array
+ * This function would turn $array['key'] to $array[0]['key']
+ * @param array $array received array()
+ * @return array $array return array in 2-dimension format.
+*/				
+function correct_array_dimension($array){
+	if (!isset($array[0])) {
+		$new_array[0] = $array;
+		return $new_array;
+	} else{
+		return $array;
+	}
+}
